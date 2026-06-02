@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Toggle War</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <main class="stage">
+      <div class="panel">
+      <div class="indicator-row">
+        <aside class="stats stats--red" aria-label="Red statistics">
+          <h2 class="stats__heading">Red</h2>
+          <dl>
+            <div class="stat">
+              <dt>Total</dt>
+              <dd id="total-red">—</dd>
+            </div>
+            <div class="stat">
+              <dt>Longest</dt>
+              <dd id="longest-red">—</dd>
+            </div>
+          </dl>
+        </aside>
+
+        <div class="current-streak indicator-col indicator-col--red" aria-live="polite">
+          <span class="current-streak__label">Current</span>
+          <span id="current-streak" class="current-streak__value">—</span>
+        </div>
+
+        <div
+          id="indicator"
+          class="indicator indicator--red"
+          role="img"
+          aria-label="Current state: red"
+        ></div>
+
+        <aside class="stats stats--blue" aria-label="Blue statistics">
+          <h2 class="stats__heading">Blue</h2>
+          <dl>
+            <div class="stat">
+              <dt>Total</dt>
+              <dd id="total-blue">—</dd>
+            </div>
+            <div class="stat">
+              <dt>Longest</dt>
+              <dd id="longest-blue">—</dd>
+            </div>
+          </dl>
+        </aside>
+      </div>
+
+      <div class="controls">
+        <button id="switch" type="button" disabled>Switch</button>
+        <p id="status" class="status" aria-live="polite">Connecting…</p>
+      </div>
+      </div>
+    </main>
+    <script src="/app.js"></script>
+  </body>
+</html>
