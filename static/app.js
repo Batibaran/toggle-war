@@ -30,10 +30,6 @@ function formatHuman(ms) {
 
 function setDuration(el, ms) {
   const n = Math.max(0, Math.floor(ms));
-  if (n < 1000) {
-    el.innerHTML = `<span class="duration__ms-only">${n.toLocaleString()} ms</span>`;
-    return;
-  }
   el.innerHTML =
     `<span class="duration__human">${formatHuman(n)}</span>` +
     `<span class="duration__ms">${n.toLocaleString()} ms</span>`;
@@ -45,7 +41,7 @@ function applyState(msg) {
   indicator.classList.toggle("indicator--blue", !isRed);
   indicator.setAttribute(
     "aria-label",
-    isRed ? "Current state: red" : "Current state: blue"
+    isRed ? "Current state: red" : "Current state: blue",
   );
 
   setDuration(totalRedEl, msg.total_red_ms);
