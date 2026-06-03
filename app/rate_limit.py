@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import logging
 import time
+
+logger = logging.getLogger(__name__)
 
 
 class TokenBucket:
@@ -43,27 +46,35 @@ class TokenBucket:
 
 class IPTracker:
     """
-    Per-IP connection cap and aggregate toggle rate limit.
+    Per-IP connection cap, aggregate toggle rate limit, and bot detection.
 
-    Enforces two constraints:
+    Enforces constraints:
     - At most *max_conns* concurrent WebSocket sessions per IP.
-    - At most *agg_refill_rate* toggles/sec across all sessions from one IP,
-      with a burst allowance of *agg_capacity*.
-
-    Attributes:
-        max_conns: Maximum concurrent connections per IP.
-        agg_capacity: Aggregate token bucket capacity per IP.
-        agg_refill_rate: Aggregate token refill rate (tokens/sec) per IP.
+    - At most *agg_refill_rate* toggles/sec across all sessions from one IP.
+    - Identifies reactive bots and maintains a set of banned IPs.
     """
 
     def __init__(
-        self, max_conns: int, agg_capacity: int, agg_refill_rate: float
+        self,
+        max_conns: int,
+        agg_capacity: int,
+        agg_refill_rate: float,
+        bot_ban_threshold: int = 5,
+        bot_min_reaction_ms: float = 100.0,
+        bot_spam_spacing_ms: float = 150.0,
     ) -> None:
         self.max_conns = max_conns
         self.agg_capacity = agg_capacity
         self.agg_refill_rate = agg_refill_rate
+        self.bot_ban_threshold = bot_ban_threshold
+        self.bot_min_reaction_ms = bot_min_reaction_ms
+        self.bot_spam_spacing_ms = bot_spam_spacing_ms
+
         self._conn_counts: dict[str, int] = {}
         self._buckets: dict[str, TokenBucket] = {}
+        self._bot_scores: dict[str, int] = {}
+        self._last_toggles: dict[str, float] = {}
+        self._banned_ips: set[str] = set()
 
     def try_connect(self, ip: str) -> bool:
         """
@@ -75,6 +86,8 @@ class IPTracker:
         Returns:
             True if under the cap and registered, False if rejected.
         """
+        if ip in self._banned_ips:
+            return False
         count = self._conn_counts.get(ip, 0)
         if count >= self.max_conns:
             return False
@@ -116,4 +129,60 @@ class IPTracker:
     def active_ips(self) -> int:
         """Number of IPs with at least one connection."""
         return len(self._conn_counts)
+
+    def set_banned_ips(self, banned: set[str]) -> None:
+        """Initialize in-memory ban list."""
+        self._banned_ips = set(banned)
+
+    def ban_ip(self, ip: str) -> None:
+        """Ban an IP in memory."""
+        self._banned_ips.add(ip)
+
+    def unban_ip(self, ip: str) -> None:
+        """Unban an IP in memory and reset its bot score."""
+        self._banned_ips.discard(ip)
+        self._bot_scores.pop(ip, None)
+        self._last_toggles.pop(ip, None)
+
+    def record_toggle(self, ip: str, state_elapsed_ms: int) -> bool:
+        """
+        Record a successful toggle from an IP.
+        Detects reactive bots based on reaction time and click spacing.
+
+        Returns:
+            True if the IP has been banned as a result of this toggle, False otherwise.
+        """
+        if ip in self._banned_ips:
+            return True
+
+        now = time.monotonic()
+        last_toggle = self._last_toggles.get(ip)
+        self._last_toggles[ip] = now
+
+        # If we don't have a previous toggle, we can't calculate spacing.
+        if last_toggle is None:
+            return False
+
+        client_elapsed_ms = (now - last_toggle) * 1000.0
+
+        # Bot signature: reacted extremely quickly to a state change (< bot_min_reaction_ms)
+        # but didn't trigger this via rapid spam clicking (spacing between their own clicks > bot_spam_spacing_ms).
+        if state_elapsed_ms < self.bot_min_reaction_ms and client_elapsed_ms > self.bot_spam_spacing_ms:
+            score = self._bot_scores.get(ip, 0) + 1
+            self._bot_scores[ip] = score
+            logger.warning(
+                "Suspicious toggle from IP %s: state_elapsed=%sms, client_elapsed=%sms. Bot score: %s/%s",
+                ip, state_elapsed_ms, int(client_elapsed_ms), score, self.bot_ban_threshold
+            )
+            if score >= self.bot_ban_threshold:
+                self.ban_ip(ip)
+                return True
+        else:
+            # Decay score on normal clicks
+            score = self._bot_scores.get(ip, 0)
+            if score > 0:
+                self._bot_scores[ip] = score - 1
+
+        return False
+
 

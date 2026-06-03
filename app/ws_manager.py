@@ -44,6 +44,26 @@ class ConnectionManager:
         """
         self._connections.discard(websocket)
 
+    async def disconnect_ip(self, ip: str) -> None:
+        """
+        Close and discard all active WebSocket connections from a specific IP.
+
+        Args:
+            ip: Target IP address
+        """
+        to_close: list[WebSocket] = []
+        for ws in self._connections:
+            client_ip = ws.client.host if ws.client else None
+            if client_ip == ip:
+                to_close.append(ws)
+
+        for ws in to_close:
+            self.disconnect(ws)
+            try:
+                await ws.close(code=1008, reason="Banned")
+            except Exception:
+                pass
+
     async def send_snapshot(self, websocket: WebSocket, payload: dict[str, Any]) -> None:
         """
         Send state JSON to one client.

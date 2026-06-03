@@ -14,6 +14,9 @@ from fastapi.staticfiles import StaticFiles
 
 from app import db
 from app.config import (
+    BOT_BAN_THRESHOLD,
+    BOT_MIN_REACTION_MS,
+    BOT_SPAM_SPACING_MS,
     BUCKET_CAPACITY,
     BUCKET_REFILL_RATE,
     IP_BUCKET_CAPACITY,
@@ -33,7 +36,14 @@ STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 state_lock = asyncio.Lock()
 app_state = AppState.fresh()
 manager = ConnectionManager()
-ip_tracker = IPTracker(MAX_CONNS_PER_IP, IP_BUCKET_CAPACITY, IP_BUCKET_REFILL_RATE)
+ip_tracker = IPTracker(
+    MAX_CONNS_PER_IP,
+    IP_BUCKET_CAPACITY,
+    IP_BUCKET_REFILL_RATE,
+    BOT_BAN_THRESHOLD,
+    BOT_MIN_REACTION_MS,
+    BOT_SPAM_SPACING_MS,
+)
 
 
 async def persist_state() -> None:
@@ -107,6 +117,9 @@ async def lifespan(_app: FastAPI):
         IP_BUCKET_REFILL_RATE,
     )
     await db.init_db()
+    banned = await db.load_banned_ips()
+    ip_tracker.set_banned_ips(banned)
+    logger.info("Loaded %d banned IPs.", len(banned))
     row = await db.load_state_row()
     async with state_lock:
         if row is None:
@@ -172,11 +185,18 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 continue
 
             async with state_lock:
+                state_elapsed = app_state.segment_elapsed_ms()
                 app_state.toggle()
                 await persist_state()
                 snapshot = app_state.snapshot()
 
             await manager.broadcast(snapshot)
+
+            if ip_tracker.record_toggle(client_ip, state_elapsed):
+                logger.warning("Banning IP %s due to reactive bot detection", client_ip)
+                await db.ban_ip(client_ip, "Automated reactive bot behavior")
+                await manager.disconnect_ip(client_ip)
+                break
     except WebSocketDisconnect:
         manager.disconnect(websocket)
         ip_tracker.disconnect(client_ip)
