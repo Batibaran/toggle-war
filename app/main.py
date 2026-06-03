@@ -13,7 +13,13 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app import db
-from app.config import PERSIST_INTERVAL_SEC, STATS_TICK_SEC
+from app.config import (
+    BUCKET_CAPACITY,
+    BUCKET_REFILL_RATE,
+    PERSIST_INTERVAL_SEC,
+    STATS_TICK_SEC,
+)
+from app.rate_limit import TokenBucket
 from app.state import AppState
 from app.ws_manager import ConnectionManager
 
@@ -85,9 +91,12 @@ async def lifespan(_app: FastAPI):
     """
     global app_state
     logger.info(
-        "Intervals: STATS_TICK_SEC=%s PERSIST_INTERVAL_SEC=%s",
+        "Intervals: STATS_TICK_SEC=%s PERSIST_INTERVAL_SEC=%s"
+        " | Bucket: capacity=%s refill_rate=%s/s",
         STATS_TICK_SEC,
         PERSIST_INTERVAL_SEC,
+        BUCKET_CAPACITY,
+        BUCKET_REFILL_RATE,
     )
     await db.init_db()
     row = await db.load_state_row()
@@ -124,6 +133,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         None
     """
     await manager.connect(websocket)
+    bucket = TokenBucket(BUCKET_CAPACITY, BUCKET_REFILL_RATE)
     try:
         async with state_lock:
             snapshot = app_state.snapshot()
@@ -136,6 +146,11 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
             except json.JSONDecodeError:
                 continue
             if message.get("type") != "toggle":
+                continue
+
+            if not bucket.consume():
+                logger.debug("Rate-limited toggle from %s", websocket.client)
+                await websocket.send_text(json.dumps({"type": "rate_limited"}))
                 continue
 
             async with state_lock:

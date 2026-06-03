@@ -16,6 +16,19 @@ const longestBlueEl = document.getElementById("longest-blue");
 
 let socket = null;
 let reconnectDelay = 1000;
+let cooldownTimer = null;
+
+function showCooldown() {
+  switchBtn.disabled = true;
+  statusEl.textContent = "Slow down…";
+  clearTimeout(cooldownTimer);
+  cooldownTimer = setTimeout(() => {
+    if (socket?.readyState === WebSocket.OPEN) {
+      switchBtn.disabled = false;
+      statusEl.textContent = "Connected";
+    }
+  }, 1000);
+}
 
 function formatHuman(ms) {
   const sec = Math.floor(ms / 1000);
@@ -81,6 +94,7 @@ function connect() {
     try {
       const msg = JSON.parse(event.data);
       if (msg.type === "state") applyState(msg);
+      if (msg.type === "rate_limited") showCooldown();
     } catch {
       /* ignore malformed */
     }
