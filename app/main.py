@@ -13,7 +13,16 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app import db
-from app.config import PERSIST_INTERVAL_SEC, STATS_TICK_SEC
+from app.config import (
+    BUCKET_CAPACITY,
+    BUCKET_REFILL_RATE,
+    IP_BUCKET_CAPACITY,
+    IP_BUCKET_REFILL_RATE,
+    MAX_CONNS_PER_IP,
+    PERSIST_INTERVAL_SEC,
+    STATS_TICK_SEC,
+)
+from app.rate_limit import IPTracker, TokenBucket
 from app.state import AppState
 from app.ws_manager import ConnectionManager
 
@@ -24,6 +33,7 @@ STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 state_lock = asyncio.Lock()
 app_state = AppState.fresh()
 manager = ConnectionManager()
+ip_tracker = IPTracker(MAX_CONNS_PER_IP, IP_BUCKET_CAPACITY, IP_BUCKET_REFILL_RATE)
 
 
 async def persist_state() -> None:
@@ -85,9 +95,16 @@ async def lifespan(_app: FastAPI):
     """
     global app_state
     logger.info(
-        "Intervals: STATS_TICK_SEC=%s PERSIST_INTERVAL_SEC=%s",
+        "Intervals: STATS_TICK_SEC=%s PERSIST_INTERVAL_SEC=%s"
+        " | Bucket: capacity=%s refill_rate=%s/s"
+        " | IP: max_conns=%s agg_capacity=%s agg_rate=%s/s",
         STATS_TICK_SEC,
         PERSIST_INTERVAL_SEC,
+        BUCKET_CAPACITY,
+        BUCKET_REFILL_RATE,
+        MAX_CONNS_PER_IP,
+        IP_BUCKET_CAPACITY,
+        IP_BUCKET_REFILL_RATE,
     )
     await db.init_db()
     row = await db.load_state_row()
@@ -117,13 +134,24 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     """
     Handle toggle commands and stream authoritative state.
 
+    Enforces per-IP connection cap (Layer 2) and per-IP aggregate
+    rate limit (Layer 3) on top of per-session token bucket (Layer 1).
+
     Args:
         websocket: Client WebSocket
 
     Returns:
         None
     """
+    client_ip = websocket.client.host if websocket.client else "unknown"
+
+    if not ip_tracker.try_connect(client_ip):
+        logger.info("Rejected connection from %s (IP cap reached)", client_ip)
+        await websocket.close(code=1008, reason="Too many connections")
+        return
+
     await manager.connect(websocket)
+    bucket = TokenBucket(BUCKET_CAPACITY, BUCKET_REFILL_RATE)
     try:
         async with state_lock:
             snapshot = app_state.snapshot()
@@ -138,6 +166,11 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
             if message.get("type") != "toggle":
                 continue
 
+            if not bucket.consume() or not ip_tracker.consume(client_ip):
+                logger.debug("Rate-limited toggle from %s", client_ip)
+                await websocket.send_text(json.dumps({"type": "rate_limited"}))
+                continue
+
             async with state_lock:
                 app_state.toggle()
                 await persist_state()
@@ -146,8 +179,10 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
             await manager.broadcast(snapshot)
     except WebSocketDisconnect:
         manager.disconnect(websocket)
+        ip_tracker.disconnect(client_ip)
     except Exception:
         manager.disconnect(websocket)
+        ip_tracker.disconnect(client_ip)
         raise
 
 
