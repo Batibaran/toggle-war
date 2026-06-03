@@ -20,6 +20,12 @@ CREATE TABLE IF NOT EXISTS app_state (
     segment_started_wall_ms INTEGER NOT NULL,
     updated_at_wall TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS banned_ips (
+    ip TEXT PRIMARY KEY,
+    reason TEXT NOT NULL,
+    banned_at TEXT NOT NULL
+);
 """
 
 
@@ -104,4 +110,30 @@ async def save_state_row(
                 updated_at,
             ),
         )
+        await db.commit()
+
+
+async def load_banned_ips() -> set[str]:
+    """Load set of banned IPs from DB."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT ip FROM banned_ips") as cursor:
+            rows = await cursor.fetchall()
+            return {row[0] for row in rows}
+
+
+async def ban_ip(ip: str, reason: str) -> None:
+    """Save an IP ban to the DB."""
+    banned_at = _now_wall_iso()
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "INSERT OR REPLACE INTO banned_ips (ip, reason, banned_at) VALUES (?, ?, ?)",
+            (ip, reason, banned_at),
+        )
+        await db.commit()
+
+
+async def unban_ip(ip: str) -> None:
+    """Remove an IP ban from the DB."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("DELETE FROM banned_ips WHERE ip = ?", (ip,))
         await db.commit()
