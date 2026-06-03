@@ -1,15 +1,17 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Toggle War</title>
-    <link id="favicon" rel="icon" href="data:," />
-    <link rel="stylesheet" href="/style.css" />
-  </head>
-  <body>
-    <main class="stage">
-      <div class="panel">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Toggle War</title>
+  <link id="favicon" rel="icon" href="data:," />
+  <link rel="stylesheet" href="/style.css" />
+</head>
+
+<body>
+  <main class="stage">
+    <div class="panel">
       <div class="indicator-row">
         <aside class="stats stats--red" aria-label="Red statistics">
           <h2 class="stats__heading">Red</h2>
@@ -30,12 +32,7 @@
           <span id="current-streak" class="current-streak__value">—</span>
         </div>
 
-        <div
-          id="indicator"
-          class="indicator indicator--red"
-          role="img"
-          aria-label="Current state: red"
-        ></div>
+        <div id="indicator" class="indicator indicator--red" role="img" aria-label="Current state: red"></div>
 
         <aside class="stats stats--blue" aria-label="Blue statistics">
           <h2 class="stats__heading">Blue</h2>
@@ -53,11 +50,16 @@
       </div>
 
       <div class="controls">
+        <div class="total-time" aria-live="polite">
+          <span class="current-streak__label">Total time</span>
+          <span id="total-time" class="current-streak__value">—</span>
+        </div>
         <button id="switch" type="button" disabled>Switch</button>
         <p id="status" class="status" aria-live="polite">Connecting…</p>
       </div>
-      </div>
-    </main>
-    <script src="/app.js"></script>
-  </body>
+    </div>
+  </main>
+  <script src="/app.js"></script>
+</body>
+
 </html>

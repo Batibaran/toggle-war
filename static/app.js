@@ -14,7 +14,8 @@ const longestRedEl = document.getElementById("longest-red");
 const totalBlueEl = document.getElementById("total-blue");
 const longestBlueEl = document.getElementById("longest-blue");
 
-let socket = null;
+const totalTimeEl = document.getElementById("total-time"); let socket = null;
+
 let reconnectDelay = 1000;
 
 function formatHuman(ms) {
@@ -29,6 +30,8 @@ function formatHuman(ms) {
 }
 
 function setDuration(el, ms) {
+  if (!el) return;
+
   const n = Math.max(0, Math.floor(ms));
   el.innerHTML =
     `<span class="duration__human">${formatHuman(n)}</span>` +
@@ -56,6 +59,9 @@ function applyState(msg) {
     isRed ? "Current state: red" : "Current state: blue",
   );
 
+  const totalTimeMs = Number(msg.total_red_ms || 0) + Number(msg.total_blue_ms || 0);
+
+  setDuration(totalTimeEl, totalTimeMs);
   setDuration(totalRedEl, msg.total_red_ms);
   setDuration(longestRedEl, msg.longest_red_ms);
   setDuration(totalBlueEl, msg.total_blue_ms);
