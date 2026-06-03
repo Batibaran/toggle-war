@@ -35,6 +35,18 @@ function setDuration(el, ms) {
     `<span class="duration__ms">${n.toLocaleString()} ms</span>`;
 }
 
+function setFavicon(color) {
+  let link = document.getElementById('favicon');
+  if (!link) {
+    link = document.createElement('link');
+    link.id = 'favicon';
+    link.rel = 'icon';
+    document.head.appendChild(link);
+  }
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" fill="${color}"/></svg>`;
+  link.href = `data:image/svg+xml,${encodeURIComponent(svg)}`;
+}
+
 function applyState(msg) {
   const isRed = msg.value === RED;
   indicator.classList.toggle("indicator--red", isRed);
@@ -51,6 +63,8 @@ function applyState(msg) {
   setDuration(currentStreakEl, msg.current_streak_ms);
   indicatorCol.classList.toggle("indicator-col--red", isRed);
   indicatorCol.classList.toggle("indicator-col--blue", !isRed);
+
+  setFavicon(isRed ? '#c62828' : '#1565c0');
 }
 
 function connect() {
