@@ -120,6 +120,16 @@
     <p id="lb-you" class="leaderboard__you" hidden></p>
   </aside>
 
+  <section id="chat" class="chat" aria-label="Global chat">
+    <h2 class="chat__heading">Global chat</h2>
+    <ol id="chat-log" class="chat__log" aria-live="polite"></ol>
+    <form id="chat-form" class="chat__form">
+      <input id="chat-input" type="text" maxlength="280" placeholder="Log in to chat…" disabled
+        autocomplete="off" />
+      <button id="chat-send" type="submit" disabled>Send</button>
+    </form>
+  </section>
+
   <script src="/app.js"></script>
 </body>
 

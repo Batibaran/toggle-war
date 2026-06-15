@@ -44,10 +44,18 @@ const lbEmpty = document.getElementById("lb-empty");
 const lbYou = document.getElementById("lb-you");
 const lbTabs = document.querySelectorAll(".leaderboard__tab");
 
+const chatLog = document.getElementById("chat-log");
+const chatForm = document.getElementById("chat-form");
+const chatInput = document.getElementById("chat-input");
+const chatSend = document.getElementById("chat-send");
+
+let chatCooldownTimer = null;
+
 const LEADERBOARD_POLL_MS = 8000;
 
 let leaderboardData = null;
 let activeBoard = "total";
+let currentUsername = null;
 
 function showCooldown() {
   switchBtn.disabled = true;
@@ -168,6 +176,45 @@ function renderActiveBoard() {
   if (leaderboardData) renderBoard(leaderboardData[activeBoard]);
 }
 
+function renderChatMessage(msg) {
+  const atBottom =
+    chatLog.scrollHeight - chatLog.scrollTop - chatLog.clientHeight < 40;
+  const li = document.createElement("li");
+  li.className = "chat__msg";
+  const name = document.createElement("span");
+  name.className = "chat__name";
+  name.dataset.user = msg.username;
+  if (currentUsername && msg.username === currentUsername) {
+    name.classList.add("chat__name--me");
+  }
+  name.textContent = msg.username;
+  const text = document.createElement("span");
+  text.className = "chat__text";
+  text.textContent = msg.text;
+  li.append(name, text);
+  if (msg.ts) li.title = formatDate(msg.ts, true);
+  chatLog.appendChild(li);
+  // Keep view pinned to newest unless the user has scrolled up to read history.
+  if (atBottom) chatLog.scrollTop = chatLog.scrollHeight;
+}
+
+function renderChatHistory(messages) {
+  chatLog.innerHTML = "";
+  (messages || []).forEach(renderChatMessage);
+  chatLog.scrollTop = chatLog.scrollHeight;
+}
+
+// Re-apply the "this is you" highlight to already-rendered messages, since the
+// session can resolve after some chat history has already been shown.
+function refreshChatHighlight() {
+  chatLog.querySelectorAll(".chat__name").forEach((el) => {
+    el.classList.toggle(
+      "chat__name--me",
+      !!currentUsername && el.dataset.user === currentUsername,
+    );
+  });
+}
+
 async function fetchLeaderboard() {
   const token = localStorage.getItem(TOKEN_KEY);
   const headers = token ? { Authorization: `Bearer ${token}` } : {};
@@ -183,20 +230,48 @@ async function fetchLeaderboard() {
   }
 }
 
+function setChatEnabled(enabled) {
+  chatInput.disabled = !enabled;
+  chatSend.disabled = !enabled;
+  chatInput.placeholder = enabled ? "Say something…" : "Log in to chat…";
+}
+
+// On a rate-limit, briefly lock the input and surface the reason as a red
+// placeholder in-place — no layout shift from a separate error line.
+function showChatCooldown(text) {
+  clearTimeout(chatCooldownTimer);
+  chatInput.value = "";
+  chatInput.disabled = true;
+  chatSend.disabled = true;
+  chatInput.placeholder = text;
+  chatInput.classList.add("chat-input--cooldown");
+  chatCooldownTimer = setTimeout(() => {
+    chatInput.classList.remove("chat-input--cooldown");
+    setChatEnabled(!!currentUsername);
+    if (currentUsername) chatInput.focus();
+  }, 1000);
+}
+
 function setLoggedIn(username, stats) {
+  currentUsername = username;
   accountName.textContent = username;
   authForm.hidden = true;
   authAccount.hidden = false;
   authError.textContent = "";
   playerStats.hidden = false;
+  setChatEnabled(true);
+  refreshChatHighlight();
   if (stats) applyUserStats(stats);
 }
 
 function setLoggedOut() {
+  currentUsername = null;
   authForm.hidden = false;
   authAccount.hidden = true;
   playerStats.hidden = true;
   authPassword.value = "";
+  setChatEnabled(false);
+  refreshChatHighlight();
 }
 
 function reconnect() {
@@ -294,6 +369,9 @@ function connect() {
       if (msg.type === "state") applyState(msg);
       if (msg.type === "rate_limited") showCooldown();
       if (msg.type === "user_stats") applyUserStats(msg);
+      if (msg.type === "chat") renderChatMessage(msg);
+      if (msg.type === "chat_history") renderChatHistory(msg.messages);
+      if (msg.type === "chat_error") showChatCooldown(msg.error || "Slow down");
     } catch {
       /* ignore malformed */
     }
@@ -318,6 +396,16 @@ function connect() {
 switchBtn.addEventListener("click", () => {
   if (socket?.readyState === WebSocket.OPEN) {
     socket.send(JSON.stringify({ type: "toggle" }));
+  }
+});
+
+chatForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const text = chatInput.value.trim();
+  if (!text) return;
+  if (socket?.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify({ type: "chat", text }));
+    chatInput.value = "";
   }
 });
 

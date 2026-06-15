@@ -95,8 +95,23 @@ class ConnectionManager:
         Returns:
             None
         """
+        await self.broadcast_event({**payload, "active_players": self.active_players})
+
+    async def broadcast_event(self, payload: dict[str, Any]) -> None:
+        """
+        Push an arbitrary payload verbatim to all clients; drop failed sockets.
+
+        Unlike `broadcast`, this does not inject `active_players` — use it for
+        non-state events such as chat messages.
+
+        Args:
+            payload: Message dict to send as-is
+
+        Returns:
+            None
+        """
         dead: list[WebSocket] = []
-        text = json.dumps({**payload, "active_players": self.active_players})
+        text = json.dumps(payload)
         for websocket in self._connections:
             try:
                 await websocket.send_text(text)
