@@ -6,6 +6,7 @@ import asyncio
 import json
 import logging
 import time
+from collections import deque
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -38,6 +39,13 @@ STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 state_lock = asyncio.Lock()
 app_state = AppState.fresh()
 manager = ConnectionManager()
+
+# Global chat: in-memory only, never persisted. A fixed-size ring buffer caps
+# memory regardless of uptime; new clients receive these as scrollback. Each
+# entry is {"username", "text", "ts"}.
+CHAT_HISTORY_SIZE = 200
+CHAT_MAX_LEN = 280
+chat_history: deque[dict] = deque(maxlen=CHAT_HISTORY_SIZE)
 ip_tracker = IPTracker(
     MAX_CONNS_PER_IP,
     IP_BUCKET_CAPACITY,
@@ -174,6 +182,8 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     identity = f"user:{user_id}" if user_id is not None else f"ip:{client_ip}"
     await manager.connect(websocket, identity)
     bucket = TokenBucket(BUCKET_CAPACITY, BUCKET_REFILL_RATE)
+    # Separate budget for chat: ~1 msg/sec sustained, burst of 5.
+    chat_bucket = TokenBucket(5, 1.0)
     try:
         async with state_lock:
             snapshot = app_state.snapshot()
@@ -183,13 +193,43 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         if user_stats is not None:
             await manager.send_snapshot(websocket, _stats_payload(user_stats))
 
+        await manager.send_snapshot(
+            websocket, {"type": "chat_history", "messages": list(chat_history)}
+        )
+
         while True:
             raw = await websocket.receive_text()
             try:
                 message = json.loads(raw)
             except json.JSONDecodeError:
                 continue
-            if message.get("type") != "toggle":
+
+            msg_type = message.get("type")
+
+            if msg_type == "chat":
+                if user_id is None:
+                    await websocket.send_text(
+                        json.dumps({"type": "chat_error", "error": "Log in to chat."})
+                    )
+                    continue
+                text = (message.get("text") or "").strip()
+                if not text:
+                    continue
+                if not chat_bucket.consume():
+                    await websocket.send_text(
+                        json.dumps({"type": "chat_error", "error": "Slow down."})
+                    )
+                    continue
+                entry = {
+                    "username": user["username"],
+                    "text": text[:CHAT_MAX_LEN],
+                    "ts": _now_iso(),
+                }
+                chat_history.append(entry)
+                await manager.broadcast_event({"type": "chat", **entry})
+                continue
+
+            if msg_type != "toggle":
                 continue
 
             if not bucket.consume() or not ip_tracker.consume(client_ip):
