@@ -170,7 +170,9 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     user = await resolve_token(websocket.query_params.get("token"))
     user_id = user["id"] if user else None
 
-    await manager.connect(websocket)
+    # Dedup tabs/devices: logged-in users collapse by id, anonymous by IP.
+    identity = f"user:{user_id}" if user_id is not None else f"ip:{client_ip}"
+    await manager.connect(websocket, identity)
     bucket = TokenBucket(BUCKET_CAPACITY, BUCKET_REFILL_RATE)
     try:
         async with state_lock:

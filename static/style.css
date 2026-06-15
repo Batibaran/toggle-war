@@ -351,6 +351,42 @@ body {
 }
 
 /* Leaderboard tabs */
+/* Active player count */
+.leaderboard__active {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0 0 0.75rem;
+  font-size: 0.75rem;
+  color: #999;
+}
+
+.leaderboard__active-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: #4caf50;
+  box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.6);
+  animation: active-pulse 2s ease-out infinite;
+}
+
+#active-players-count {
+  color: #ddd;
+  font-weight: 600;
+}
+
+@keyframes active-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.5);
+  }
+  70% {
+    box-shadow: 0 0 0 0.35rem rgba(76, 175, 80, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(76, 175, 80, 0);
+  }
+}
+
 .leaderboard__tabs {
   display: flex;
   gap: 0.25rem;
