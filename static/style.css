@@ -4,6 +4,10 @@
   box-sizing: border-box;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 body {
   margin: 0;
   min-height: 100vh;
@@ -284,6 +288,16 @@ body {
   color: #888;
 }
 
+.auth-account span {
+  flex: 1;
+  min-width: 0;
+}
+
+.auth-account button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
 .auth-error {
   margin: 0;
   font-size: 0.75rem;
@@ -294,17 +308,24 @@ body {
   display: none;
 }
 
-/* Your-stats — fixed to the left edge, vertical, understated. */
-.player-stats {
+/* Side panels — fixed to the edges, vertical, understated. */
+.side-panel {
   position: fixed;
-  left: 1.25rem;
   top: 50%;
   transform: translateY(-50%);
   z-index: 10;
   width: 11rem;
 }
 
-.player-stats__heading {
+.side-panel--left {
+  left: 1.25rem;
+}
+
+.side-panel--right {
+  right: 1.25rem;
+}
+
+.side-panel__heading {
   margin: 0 0 0.75rem;
   font-size: 0.7rem;
   font-weight: 600;
@@ -329,6 +350,100 @@ body {
   color: #e0e0e0;
 }
 
+/* Leaderboard tabs */
+.leaderboard__tabs {
+  display: flex;
+  gap: 0.25rem;
+  margin-bottom: 0.75rem;
+}
+
+.leaderboard__tab {
+  flex: 1;
+  padding: 0.3rem 0.2rem;
+  font-size: 0.72rem;
+  cursor: pointer;
+  background: transparent;
+  color: #777;
+  border: 1px solid transparent;
+  border-bottom-color: #2a2a2a;
+  border-radius: 4px 4px 0 0;
+}
+
+.leaderboard__tab:hover {
+  color: #ccc;
+}
+
+.leaderboard__tab.is-active {
+  color: #fff;
+  border-color: #3a3a3a;
+  border-bottom-color: transparent;
+}
+
+.leaderboard__tab--red.is-active {
+  color: #ef5350;
+}
+
+.leaderboard__tab--blue.is-active {
+  color: #42a5f5;
+}
+
+/* Leaderboard list */
+.leaderboard__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.leaderboard__list li {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.leaderboard__rank {
+  width: 1.25rem;
+  flex-shrink: 0;
+  text-align: right;
+  color: #666;
+}
+
+.leaderboard__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #ccc;
+}
+
+.leaderboard__count {
+  flex-shrink: 0;
+  color: #888;
+}
+
+.leaderboard__list li.is-you .leaderboard__name {
+  color: #fff;
+  font-weight: 600;
+}
+
+.leaderboard__empty,
+.leaderboard__you {
+  margin: 0.6rem 0 0;
+  font-size: 0.8rem;
+  color: #888;
+}
+
+.leaderboard__you {
+  color: #ccc;
+  border-top: 1px solid #222;
+  padding-top: 0.55rem;
+}
+
 /* On narrow screens, drop the fixed side panels back into normal flow. */
 @media (max-width: 768px) {
   .stage {
@@ -337,15 +452,18 @@ body {
   }
 
   .auth-bar,
-  .player-stats {
+  .side-panel {
     position: static;
     transform: none;
     width: min(100%, 20rem);
     margin: 1rem auto 0;
+  }
+
+  .auth-bar {
     align-items: center;
   }
 
-  .player-stats {
+  .side-panel {
     margin-bottom: 1.5rem;
   }
 

@@ -231,6 +231,8 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
 
 # --- Auth: helpers, request models, and HTTP endpoints ---
 
+LEADERBOARD_LIMIT = 10
+
 
 def _now_iso() -> str:
     """Current UTC time in the same ISO format used for persisted timestamps."""
@@ -347,6 +349,30 @@ async def me(authorization: str | None = Header(default=None)) -> Response:
         return JSONResponse({"error": "unauthorized"}, status_code=401)
     stats = await db.get_user_stats(user["id"])
     return JSONResponse({"username": user["username"], "stats": _stats_payload(stats)})
+
+
+@app.get("/api/leaderboard")
+async def leaderboard(authorization: str | None = Header(default=None)) -> Response:
+    """
+    Public top players for each metric (total / red / blue switches), plus
+    the caller's own rank per metric when authenticated. Anonymous callers
+    get the top lists with `you` = null.
+    """
+    user = await resolve_token(_bearer(authorization))
+    boards: dict[str, dict] = {}
+    for metric in db.LEADERBOARD_COLUMNS:
+        top = await db.get_leaderboard(metric, LEADERBOARD_LIMIT)
+        you = None
+        if user is not None:
+            rank = await db.get_user_rank(metric, user["id"])
+            if rank is not None and rank["score"] > 0:
+                you = {
+                    "username": rank["username"],
+                    "rank": rank["rank"],
+                    "score": rank["score"],
+                }
+        boards[metric] = {"top": top, "you": you}
+    return JSONResponse({"boards": boards})
 
 
 @app.get("/")

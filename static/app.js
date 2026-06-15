@@ -38,6 +38,16 @@ const psBlue = document.getElementById("ps-blue");
 const psSince = document.getElementById("ps-since");
 const psLast = document.getElementById("ps-last");
 
+const lbList = document.getElementById("lb-list");
+const lbEmpty = document.getElementById("lb-empty");
+const lbYou = document.getElementById("lb-you");
+const lbTabs = document.querySelectorAll(".leaderboard__tab");
+
+const LEADERBOARD_POLL_MS = 8000;
+
+let leaderboardData = null;
+let activeBoard = "total";
+
 function showCooldown() {
   switchBtn.disabled = true;
   statusEl.textContent = "Slow down…";
@@ -120,6 +130,54 @@ function applyUserStats(msg) {
   psLast.textContent = formatDate(msg.last_active, true);
 }
 
+function renderBoard(board) {
+  const top = board?.top || [];
+  const youName = board?.you?.username;
+
+  lbList.innerHTML = "";
+  lbEmpty.hidden = top.length > 0;
+
+  top.forEach((entry, i) => {
+    const li = document.createElement("li");
+    if (youName && entry.username === youName) li.classList.add("is-you");
+    li.innerHTML =
+      `<span class="leaderboard__rank">${i + 1}</span>` +
+      `<span class="leaderboard__name"></span>` +
+      `<span class="leaderboard__count">${Number(entry.score).toLocaleString()}</span>`;
+    li.querySelector(".leaderboard__name").textContent = entry.username;
+    lbList.appendChild(li);
+  });
+
+  // Show the user's own rank separately only when they're off the top list.
+  const inTop = youName && top.some((e) => e.username === youName);
+  if (board?.you && !inTop) {
+    lbYou.hidden = false;
+    lbYou.textContent =
+      `You · #${board.you.rank} · ${Number(board.you.score).toLocaleString()}`;
+  } else {
+    lbYou.hidden = true;
+  }
+}
+
+function renderActiveBoard() {
+  if (leaderboardData) renderBoard(leaderboardData[activeBoard]);
+}
+
+async function fetchLeaderboard() {
+  const token = localStorage.getItem(TOKEN_KEY);
+  const headers = token ? { Authorization: `Bearer ${token}` } : {};
+  try {
+    const res = await fetch("/api/leaderboard", { headers });
+    if (res.ok) {
+      const data = await res.json();
+      leaderboardData = data.boards;
+      renderActiveBoard();
+    }
+  } catch {
+    /* leave the last view in place */
+  }
+}
+
 function setLoggedIn(username, stats) {
   accountName.textContent = username;
   authForm.hidden = true;
@@ -167,6 +225,7 @@ async function submitAuth(path) {
     localStorage.setItem(TOKEN_KEY, data.token);
     setLoggedIn(data.username, data.stats);
     reconnect();
+    fetchLeaderboard();
   } catch {
     authError.textContent = "Network error.";
   }
@@ -187,6 +246,7 @@ async function logout() {
   localStorage.removeItem(TOKEN_KEY);
   setLoggedOut();
   reconnect();
+  fetchLeaderboard();
 }
 
 async function checkSession() {
@@ -263,5 +323,15 @@ authForm.addEventListener("submit", (event) => {
 registerBtn.addEventListener("click", () => submitAuth("/api/register"));
 logoutBtn.addEventListener("click", logout);
 
+lbTabs.forEach((tab) => {
+  tab.addEventListener("click", () => {
+    activeBoard = tab.dataset.board;
+    lbTabs.forEach((t) => t.classList.toggle("is-active", t === tab));
+    renderActiveBoard();
+  });
+});
+
 checkSession();
 connect();
+fetchLeaderboard();
+setInterval(fetchLeaderboard, LEADERBOARD_POLL_MS);

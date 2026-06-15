@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS sessions (
 );
 
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_users_toggle_count ON users(toggle_count DESC);
 """
 
 
@@ -260,6 +261,70 @@ async def increment_user_toggle(user_id: int, new_value: int) -> None:
             (to_red, to_blue, now, user_id),
         )
         await db.commit()
+
+
+# Maps a leaderboard metric key to its (trusted) column name. Used to build
+# the ranking SQL; values are never derived from request input.
+LEADERBOARD_COLUMNS = {
+    "total": "toggle_count",
+    "red": "toggles_to_red",
+    "blue": "toggles_to_blue",
+}
+
+
+async def get_leaderboard(metric: str, limit: int) -> list[dict]:
+    """
+    Top players ranked by a chosen metric.
+
+    Args:
+        metric: One of LEADERBOARD_COLUMNS ("total", "red", "blue")
+        limit: Maximum number of rows to return
+
+    Returns:
+        List of {username, score}, highest first. Players with a score of
+        zero for this metric are excluded.
+    """
+    column = LEADERBOARD_COLUMNS[metric]
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            f"""
+            SELECT username, {column} AS score FROM users
+            WHERE {column} > 0
+            ORDER BY {column} DESC, id ASC
+            LIMIT ?
+            """,
+            (limit,),
+        ) as cursor:
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
+
+
+async def get_user_rank(metric: str, user_id: int) -> dict | None:
+    """
+    A single user's standing on one leaderboard.
+
+    Args:
+        metric: One of LEADERBOARD_COLUMNS ("total", "red", "blue")
+        user_id: Target user
+
+    Returns:
+        {username, score, rank} (rank is 1-based, ties share the better
+        rank), or None if the user does not exist.
+    """
+    column = LEADERBOARD_COLUMNS[metric]
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            f"""
+            SELECT username, {column} AS score,
+                   (SELECT COUNT(*) FROM users b WHERE b.{column} > a.{column}) + 1 AS rank
+            FROM users a WHERE a.id = ?
+            """,
+            (user_id,),
+        ) as cursor:
+            row = await cursor.fetchone()
+            return dict(row) if row else None
 
 
 async def create_session(token: str, user_id: int, expires_at_wall: str) -> None:

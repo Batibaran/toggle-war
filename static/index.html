@@ -26,32 +26,6 @@
     <p id="auth-error" class="auth-error" role="alert"></p>
   </div>
 
-  <aside id="player-stats" class="player-stats" hidden aria-label="Your statistics">
-    <h2 class="player-stats__heading">Your stats</h2>
-    <dl class="player-stats__grid">
-      <div class="stat">
-        <dt>Total switches</dt>
-        <dd id="ps-total">—</dd>
-      </div>
-      <div class="stat">
-        <dt>Switches to red</dt>
-        <dd id="ps-red">—</dd>
-      </div>
-      <div class="stat">
-        <dt>Switches to blue</dt>
-        <dd id="ps-blue">—</dd>
-      </div>
-      <div class="stat">
-        <dt>Member since</dt>
-        <dd id="ps-since">—</dd>
-      </div>
-      <div class="stat">
-        <dt>Last active</dt>
-        <dd id="ps-last">—</dd>
-      </div>
-    </dl>
-  </aside>
-
   <main class="stage">
     <div class="panel">
       <div class="indicator-row">
@@ -101,6 +75,47 @@
       </div>
     </div>
   </main>
+
+  <aside id="player-stats" class="player-stats side-panel side-panel--left" hidden
+    aria-label="Your statistics">
+    <h2 class="side-panel__heading">Your stats</h2>
+    <dl class="player-stats__grid">
+      <div class="stat">
+        <dt>Total switches</dt>
+        <dd id="ps-total">—</dd>
+      </div>
+      <div class="stat">
+        <dt>Switches to red</dt>
+        <dd id="ps-red">—</dd>
+      </div>
+      <div class="stat">
+        <dt>Switches to blue</dt>
+        <dd id="ps-blue">—</dd>
+      </div>
+      <div class="stat">
+        <dt>Member since</dt>
+        <dd id="ps-since">—</dd>
+      </div>
+      <div class="stat">
+        <dt>Last active</dt>
+        <dd id="ps-last">—</dd>
+      </div>
+    </dl>
+  </aside>
+
+  <aside id="leaderboard" class="leaderboard side-panel side-panel--right" aria-label="Leaderboard">
+    <h2 class="side-panel__heading">Leaderboard</h2>
+    <div class="leaderboard__tabs" role="tablist">
+      <button class="leaderboard__tab leaderboard__tab--total is-active" data-board="total"
+        type="button">Total</button>
+      <button class="leaderboard__tab leaderboard__tab--red" data-board="red" type="button">Red</button>
+      <button class="leaderboard__tab leaderboard__tab--blue" data-board="blue" type="button">Blue</button>
+    </div>
+    <ol id="lb-list" class="leaderboard__list"></ol>
+    <p id="lb-empty" class="leaderboard__empty">No players yet.</p>
+    <p id="lb-you" class="leaderboard__you" hidden></p>
+  </aside>
+
   <script src="/app.js"></script>
 </body>
 
