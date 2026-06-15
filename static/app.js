@@ -18,6 +18,25 @@ const totalTimeEl = document.getElementById("total-time"); let socket = null;
 
 let reconnectDelay = 1000;
 let cooldownTimer = null;
+let suppressReconnect = false;
+
+const TOKEN_KEY = "toggleWarToken";
+
+const authForm = document.getElementById("auth-form");
+const authUsername = document.getElementById("auth-username");
+const authPassword = document.getElementById("auth-password");
+const registerBtn = document.getElementById("register-btn");
+const logoutBtn = document.getElementById("logout-btn");
+const authAccount = document.getElementById("auth-account");
+const accountName = document.getElementById("account-name");
+const authError = document.getElementById("auth-error");
+
+const playerStats = document.getElementById("player-stats");
+const psTotal = document.getElementById("ps-total");
+const psRed = document.getElementById("ps-red");
+const psBlue = document.getElementById("ps-blue");
+const psSince = document.getElementById("ps-since");
+const psLast = document.getElementById("ps-last");
 
 function showCooldown() {
   switchBtn.disabled = true;
@@ -86,9 +105,117 @@ function applyState(msg) {
   setFavicon(isRed ? '#c62828' : '#1565c0');
 }
 
+function formatDate(iso, withTime = false) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return withTime ? d.toLocaleString() : d.toLocaleDateString();
+}
+
+function applyUserStats(msg) {
+  psTotal.textContent = Number(msg.toggle_count || 0).toLocaleString();
+  psRed.textContent = Number(msg.toggles_to_red || 0).toLocaleString();
+  psBlue.textContent = Number(msg.toggles_to_blue || 0).toLocaleString();
+  psSince.textContent = formatDate(msg.member_since);
+  psLast.textContent = formatDate(msg.last_active, true);
+}
+
+function setLoggedIn(username, stats) {
+  accountName.textContent = username;
+  authForm.hidden = true;
+  authAccount.hidden = false;
+  authError.textContent = "";
+  playerStats.hidden = false;
+  if (stats) applyUserStats(stats);
+}
+
+function setLoggedOut() {
+  authForm.hidden = false;
+  authAccount.hidden = true;
+  playerStats.hidden = true;
+  authPassword.value = "";
+}
+
+function reconnect() {
+  if (
+    socket &&
+    (socket.readyState === WebSocket.OPEN ||
+      socket.readyState === WebSocket.CONNECTING)
+  ) {
+    suppressReconnect = true;
+    socket.close();
+  }
+  reconnectDelay = 1000;
+  connect();
+}
+
+async function submitAuth(path) {
+  const username = authUsername.value.trim();
+  const password = authPassword.value;
+  authError.textContent = "";
+  try {
+    const res = await fetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      authError.textContent = data.error || "Something went wrong.";
+      return;
+    }
+    localStorage.setItem(TOKEN_KEY, data.token);
+    setLoggedIn(data.username, data.stats);
+    reconnect();
+  } catch {
+    authError.textContent = "Network error.";
+  }
+}
+
+async function logout() {
+  const token = localStorage.getItem(TOKEN_KEY);
+  if (token) {
+    try {
+      await fetch("/api/logout", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    } catch {
+      /* best effort */
+    }
+  }
+  localStorage.removeItem(TOKEN_KEY);
+  setLoggedOut();
+  reconnect();
+}
+
+async function checkSession() {
+  const token = localStorage.getItem(TOKEN_KEY);
+  if (!token) {
+    setLoggedOut();
+    return;
+  }
+  try {
+    const res = await fetch("/api/me", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (res.ok) {
+      const data = await res.json();
+      setLoggedIn(data.username, data.stats);
+    } else {
+      localStorage.removeItem(TOKEN_KEY);
+      setLoggedOut();
+    }
+  } catch {
+    setLoggedOut();
+  }
+}
+
 function connect() {
   const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-  socket = new WebSocket(`${protocol}//${location.host}/ws`);
+  const token = localStorage.getItem(TOKEN_KEY);
+  const query = token ? `?token=${encodeURIComponent(token)}` : "";
+  socket = new WebSocket(`${protocol}//${location.host}/ws${query}`);
 
   socket.addEventListener("open", () => {
     statusEl.textContent = "Connected";
@@ -101,12 +228,17 @@ function connect() {
       const msg = JSON.parse(event.data);
       if (msg.type === "state") applyState(msg);
       if (msg.type === "rate_limited") showCooldown();
+      if (msg.type === "user_stats") applyUserStats(msg);
     } catch {
       /* ignore malformed */
     }
   });
 
   socket.addEventListener("close", () => {
+    if (suppressReconnect) {
+      suppressReconnect = false;
+      return;
+    }
     switchBtn.disabled = true;
     statusEl.textContent = "Reconnecting…";
     setTimeout(connect, reconnectDelay);
@@ -124,4 +256,12 @@ switchBtn.addEventListener("click", () => {
   }
 });
 
+authForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  submitAuth("/api/login");
+});
+registerBtn.addEventListener("click", () => submitAuth("/api/register"));
+logoutBtn.addEventListener("click", logout);
+
+checkSession();
 connect();

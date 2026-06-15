@@ -5,14 +5,16 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, Header, Response, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
-from app import db
+from app import auth, db
 from app.config import (
     BOT_BAN_THRESHOLD,
     BOT_MIN_REACTION_MS,
@@ -163,12 +165,21 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         await websocket.close(code=1008, reason="Too many connections")
         return
 
+    # Optional identity: a stale/invalid token resolves to None and the
+    # socket simply plays anonymously — it never blocks play.
+    user = await resolve_token(websocket.query_params.get("token"))
+    user_id = user["id"] if user else None
+
     await manager.connect(websocket)
     bucket = TokenBucket(BUCKET_CAPACITY, BUCKET_REFILL_RATE)
     try:
         async with state_lock:
             snapshot = app_state.snapshot()
         await manager.send_snapshot(websocket, snapshot)
+
+        user_stats = await db.get_user_stats(user_id) if user_id is not None else None
+        if user_stats is not None:
+            await manager.send_snapshot(websocket, _stats_payload(user_stats))
 
         while True:
             raw = await websocket.receive_text()
@@ -188,9 +199,21 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 state_elapsed = app_state.segment_elapsed_ms()
                 app_state.toggle()
                 await persist_state()
+                new_value = app_state.value
+                if user_id is not None:
+                    await db.increment_user_toggle(user_id, new_value)
                 snapshot = app_state.snapshot()
 
             await manager.broadcast(snapshot)
+
+            if user_stats is not None:
+                user_stats["toggle_count"] += 1
+                if new_value == 0:
+                    user_stats["toggles_to_red"] += 1
+                else:
+                    user_stats["toggles_to_blue"] += 1
+                user_stats["last_toggle_at_wall"] = _now_iso()
+                await manager.send_snapshot(websocket, _stats_payload(user_stats))
 
             if ip_tracker.record_toggle(client_ip, state_elapsed):
                 logger.warning("Banning IP %s due to reactive bot detection", client_ip)
@@ -204,6 +227,126 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         manager.disconnect(websocket)
         ip_tracker.disconnect(client_ip)
         raise
+
+
+# --- Auth: helpers, request models, and HTTP endpoints ---
+
+
+def _now_iso() -> str:
+    """Current UTC time in the same ISO format used for persisted timestamps."""
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
+def _expiry_iso(days: int) -> str:
+    """ISO UTC timestamp `days` in the future, for session expiry."""
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() + days * 86400))
+
+
+def _bearer(header: str | None) -> str | None:
+    """Extract the token from an `Authorization: Bearer <token>` header."""
+    if not header:
+        return None
+    parts = header.split()
+    if len(parts) == 2 and parts[0].lower() == "bearer":
+        return parts[1]
+    return None
+
+
+def _stats_payload(stats: dict) -> dict:
+    """Shape user stat columns into a `user_stats` message body."""
+    return {
+        "type": "user_stats",
+        "toggle_count": stats["toggle_count"],
+        "toggles_to_red": stats["toggles_to_red"],
+        "toggles_to_blue": stats["toggles_to_blue"],
+        "member_since": stats["created_at_wall"],
+        "last_active": stats["last_toggle_at_wall"],
+    }
+
+
+async def resolve_token(token: str | None) -> dict | None:
+    """
+    Resolve a session token to its user row.
+
+    Expired sessions are deleted opportunistically. Returns None for a
+    missing, unknown, or expired token (callers treat this as anonymous).
+
+    Args:
+        token: Opaque session token, or None
+
+    Returns:
+        User row dict, or None.
+    """
+    if not token:
+        return None
+    session = await db.get_session(token)
+    if session is None:
+        return None
+    if session["expires_at_wall"] <= _now_iso():
+        await db.delete_session(token)
+        return None
+    return await db.get_user_by_id(session["user_id"])
+
+
+class AuthReq(BaseModel):
+    """Register/login request body."""
+
+    username: str
+    password: str
+
+
+@app.post("/api/register")
+async def register(req: AuthReq) -> Response:
+    """Create an account and auto-login, returning a session token."""
+    err = auth.validate_username(req.username) or auth.validate_password(req.password)
+    if err:
+        return JSONResponse({"error": err}, status_code=400)
+    username = req.username.strip()
+    canon = auth.canon_username(username)
+    password_hash = auth.hash_password(req.password)
+    user_id = await db.create_user(username, canon, password_hash)
+    if user_id is None:
+        return JSONResponse({"error": "username taken"}, status_code=409)
+    token = auth.new_token()
+    await db.create_session(token, user_id, _expiry_iso(auth.TOKEN_TTL_DAYS))
+    stats = await db.get_user_stats(user_id)
+    return JSONResponse(
+        {"token": token, "username": username, "stats": _stats_payload(stats)}
+    )
+
+
+@app.post("/api/login")
+async def login(req: AuthReq) -> Response:
+    """Verify credentials and return a fresh session token."""
+    canon = auth.canon_username(req.username)
+    user = await db.get_user_by_canon(canon)
+    if user is None or not auth.verify_password(req.password, user["password_hash"]):
+        return JSONResponse({"error": "invalid credentials"}, status_code=401)
+    token = auth.new_token()
+    await db.create_session(token, user["id"], _expiry_iso(auth.TOKEN_TTL_DAYS))
+    stats = await db.get_user_stats(user["id"])
+    return JSONResponse(
+        {"token": token, "username": user["username"], "stats": _stats_payload(stats)}
+    )
+
+
+@app.post("/api/logout")
+async def logout(authorization: str | None = Header(default=None)) -> Response:
+    """Invalidate a session token. Idempotent."""
+    token = _bearer(authorization)
+    if token:
+        await db.delete_session(token)
+    return Response(status_code=204)
+
+
+@app.get("/api/me")
+async def me(authorization: str | None = Header(default=None)) -> Response:
+    """Return the current user's display name and stats, or 401."""
+    user = await resolve_token(_bearer(authorization))
+    if user is None:
+        return JSONResponse({"error": "unauthorized"}, status_code=401)
+    stats = await db.get_user_stats(user["id"])
+    return JSONResponse({"username": user["username"], "stats": _stats_payload(stats)})
 
 
 @app.get("/")

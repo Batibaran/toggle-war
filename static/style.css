@@ -218,6 +218,144 @@ body {
   text-align: center;
 }
 
+/* Auth bar — fixed top-left, out of the way of the centered game. */
+.auth-bar {
+  position: fixed;
+  top: 1.25rem;
+  left: 1.25rem;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+  width: 11rem;
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  width: 100%;
+}
+
+.auth-form__actions {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.auth-form input {
+  width: 100%;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.85rem;
+  background: #111;
+  color: #e0e0e0;
+  border: 1px solid #333;
+  border-radius: 4px;
+}
+
+.auth-form input:focus {
+  outline: none;
+  border-color: #666;
+}
+
+.auth-form button,
+.auth-account button {
+  flex: 1;
+  padding: 0.4rem 0.5rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+  background: transparent;
+  color: #ccc;
+  border: 1px solid #444;
+  border-radius: 4px;
+}
+
+.auth-form button:hover,
+.auth-account button:hover {
+  border-color: #888;
+  color: #fff;
+}
+
+.auth-account {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.8rem;
+  color: #888;
+}
+
+.auth-error {
+  margin: 0;
+  font-size: 0.75rem;
+  color: #ef5350;
+}
+
+.auth-error:empty {
+  display: none;
+}
+
+/* Your-stats — fixed to the left edge, vertical, understated. */
+.player-stats {
+  position: fixed;
+  left: 1.25rem;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 10;
+  width: 11rem;
+}
+
+.player-stats__heading {
+  margin: 0 0 0.75rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #888;
+}
+
+.player-stats__grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin: 0;
+}
+
+.player-stats .stat {
+  margin: 0;
+}
+
+.player-stats .stat dd {
+  align-items: flex-start;
+  color: #e0e0e0;
+}
+
+/* On narrow screens, drop the fixed side panels back into normal flow. */
+@media (max-width: 768px) {
+  .stage {
+    min-height: auto;
+    padding-top: 2rem;
+  }
+
+  .auth-bar,
+  .player-stats {
+    position: static;
+    transform: none;
+    width: min(100%, 20rem);
+    margin: 1rem auto 0;
+    align-items: center;
+  }
+
+  .player-stats {
+    margin-bottom: 1.5rem;
+  }
+
+  .player-stats__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
+    gap: 0.75rem;
+  }
+}
+
 @media (max-width: 480px) {
   .indicator-row {
     column-gap: 0.75rem;
