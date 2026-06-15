@@ -12,25 +12,33 @@ class ConnectionManager:
     """Track active clients and push state snapshots."""
 
     def __init__(self) -> None:
-        self._connections: set[WebSocket] = set()
+        # Maps each live socket to an identity key ("user:<id>" or "ip:<addr>")
+        # so distinct players can be counted independently of tab/device count.
+        self._connections: dict[WebSocket, str] = {}
 
-    async def connect(self, websocket: WebSocket) -> None:
+    async def connect(self, websocket: WebSocket, identity: str) -> None:
         """
         Accept and register a WebSocket client.
 
         Args:
             websocket: Incoming connection
+            identity: Stable key identifying the player behind this socket
 
         Returns:
             None
         """
         await websocket.accept()
-        self._connections.add(websocket)
+        self._connections[websocket] = identity
 
     @property
     def connection_count(self) -> int:
-        """Number of active WebSocket clients."""
+        """Number of active WebSocket clients (raw sockets)."""
         return len(self._connections)
+
+    @property
+    def active_players(self) -> int:
+        """Number of distinct players among active clients."""
+        return len(set(self._connections.values()))
 
     def disconnect(self, websocket: WebSocket) -> None:
         """
@@ -42,7 +50,7 @@ class ConnectionManager:
         Returns:
             None
         """
-        self._connections.discard(websocket)
+        self._connections.pop(websocket, None)
 
     async def disconnect_ip(self, ip: str) -> None:
         """
@@ -88,7 +96,7 @@ class ConnectionManager:
             None
         """
         dead: list[WebSocket] = []
-        text = json.dumps(payload)
+        text = json.dumps({**payload, "active_players": self.active_players})
         for websocket in self._connections:
             try:
                 await websocket.send_text(text)

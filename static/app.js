@@ -38,6 +38,7 @@ const psBlue = document.getElementById("ps-blue");
 const psSince = document.getElementById("ps-since");
 const psLast = document.getElementById("ps-last");
 
+const activePlayersCount = document.getElementById("active-players-count");
 const lbList = document.getElementById("lb-list");
 const lbEmpty = document.getElementById("lb-empty");
 const lbYou = document.getElementById("lb-you");
@@ -113,6 +114,10 @@ function applyState(msg) {
   indicatorCol.classList.toggle("indicator-col--blue", !isRed);
 
   setFavicon(isRed ? '#c62828' : '#1565c0');
+
+  if (msg.active_players != null) {
+    activePlayersCount.textContent = Number(msg.active_players).toLocaleString();
+  }
 }
 
 function formatDate(iso, withTime = false) {
