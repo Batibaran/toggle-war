@@ -419,6 +419,10 @@ body {
   border-bottom-color: transparent;
 }
 
+.leaderboard__tab--time.is-active {
+  color: #ffb74d;
+}
+
 .leaderboard__tab--red.is-active {
   color: #ef5350;
 }

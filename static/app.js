@@ -37,6 +37,7 @@ const psRed = document.getElementById("ps-red");
 const psBlue = document.getElementById("ps-blue");
 const psSince = document.getElementById("ps-since");
 const psLast = document.getElementById("ps-last");
+const psTime = document.getElementById("ps-time");
 
 const activePlayersCount = document.getElementById("active-players-count");
 const lbList = document.getElementById("lb-list");
@@ -54,7 +55,7 @@ let chatCooldownTimer = null;
 const LEADERBOARD_POLL_MS = 8000;
 
 let leaderboardData = null;
-let activeBoard = "total";
+let activeBoard = "time";
 let currentUsername = null;
 
 function showCooldown() {
@@ -141,6 +142,14 @@ function applyUserStats(msg) {
   psBlue.textContent = Number(msg.toggles_to_blue || 0).toLocaleString();
   psSince.textContent = formatDate(msg.member_since);
   psLast.textContent = formatDate(msg.last_active, true);
+  const timeMs = Number(msg.active_time_ms || 0);
+  if (timeMs > 0) {
+    const r = formatHuman(Number(msg.active_time_red_ms || 0));
+    const b = formatHuman(Number(msg.active_time_blue_ms || 0));
+    psTime.innerHTML = `<span>${formatHuman(timeMs)}</span><span style="font-size: 0.75em; color: #888;">(<span style="color:#ef5350">${r}</span> - <span style="color:#42a5f5">${b}</span>)</span>`;
+  } else {
+    psTime.textContent = "—";
+  }
 }
 
 function renderBoard(board) {
@@ -153,10 +162,19 @@ function renderBoard(board) {
   top.forEach((entry, i) => {
     const li = document.createElement("li");
     if (youName && entry.username === youName) li.classList.add("is-you");
+    let scoreText = "";
+    if (activeBoard === "time") {
+      const tot = formatHuman(Number(entry.score));
+      const r = formatHuman(Number(entry.active_time_red_ms || 0));
+      const b = formatHuman(Number(entry.active_time_blue_ms || 0));
+      scoreText = `${tot} <span style="font-size: 0.75em; color: #888;">( <span style="color:#ef5350">${r}</span> - <span style="color:#42a5f5">${b}</span> )</span>`;
+    } else {
+      scoreText = Number(entry.score).toLocaleString();
+    }
     li.innerHTML =
       `<span class="leaderboard__rank">${i + 1}</span>` +
       `<span class="leaderboard__name"></span>` +
-      `<span class="leaderboard__count">${Number(entry.score).toLocaleString()}</span>`;
+      `<span class="leaderboard__count">${scoreText}</span>`;
     li.querySelector(".leaderboard__name").textContent = entry.username;
     lbList.appendChild(li);
   });
@@ -165,8 +183,17 @@ function renderBoard(board) {
   const inTop = youName && top.some((e) => e.username === youName);
   if (board?.you && !inTop) {
     lbYou.hidden = false;
-    lbYou.textContent =
-      `You · #${board.you.rank} · ${Number(board.you.score).toLocaleString()}`;
+    let youScore = "";
+    if (activeBoard === "time") {
+      const tot = formatHuman(Number(board.you.score));
+      const r = formatHuman(Number(board.you.active_time_red_ms || 0));
+      const b = formatHuman(Number(board.you.active_time_blue_ms || 0));
+      youScore = `${tot} <span style="font-size: 0.75em; color: #888;">( <span style="color:#ef5350">${r}</span> - <span style="color:#42a5f5">${b}</span> )</span>`;
+    } else {
+      youScore = Number(board.you.score).toLocaleString();
+    }
+    lbYou.innerHTML =
+      `You · #${board.you.rank} · ${youScore}`;
   } else {
     lbYou.hidden = true;
   }

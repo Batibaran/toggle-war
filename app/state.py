@@ -33,6 +33,7 @@ class AppState:
     longest_blue_ms: int
     segment_started_mono_ms: float
     segment_started_wall_ms: int
+    last_toggler_user_id: int | None = None
 
     @classmethod
     def fresh(cls) -> AppState:
@@ -52,6 +53,7 @@ class AppState:
             longest_blue_ms=0,
             segment_started_mono_ms=mono,
             segment_started_wall_ms=wall,
+            last_toggler_user_id=None,
         )
 
     @classmethod
@@ -75,6 +77,7 @@ class AppState:
         else:
             total_blue += extra_wall
         mono = now_mono_ms()
+        last_toggler = row.get("last_toggler_user_id")
         return cls(
             value=value,
             total_red_ms=total_red,
@@ -83,6 +86,7 @@ class AppState:
             longest_blue_ms=int(row["longest_blue_ms"]),
             segment_started_mono_ms=mono,
             segment_started_wall_ms=wall_now,
+            last_toggler_user_id=int(last_toggler) if last_toggler is not None else None,
         )
 
     def segment_elapsed_ms(self) -> int:
@@ -135,12 +139,13 @@ class AppState:
             "current_streak_ms": extra,
         }
 
-    def persist_fields(self) -> tuple[int, int, int, int, int, int]:
+    def persist_fields(self) -> tuple[int, int, int, int, int, int, int | None]:
         """
         Committed fields for SQLite (excludes in-progress segment).
 
         Returns:
-            Tuple of value, totals, longest, segment_started_wall_ms
+            Tuple of value, totals, longest, segment_started_wall_ms,
+            last_toggler_user_id
         """
         return (
             self.value,
@@ -149,4 +154,5 @@ class AppState:
             self.longest_red_ms,
             self.longest_blue_ms,
             self.segment_started_wall_ms,
+            self.last_toggler_user_id,
         )

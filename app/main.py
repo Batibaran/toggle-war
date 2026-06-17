@@ -29,7 +29,7 @@ from app.config import (
     STATS_TICK_SEC,
 )
 from app.rate_limit import IPTracker, TokenBucket
-from app.state import AppState
+from app.state import AppState, now_wall_ms
 from app.ws_manager import ConnectionManager
 
 logger = logging.getLogger(__name__)
@@ -136,6 +136,13 @@ async def lifespan(_app: FastAPI):
             app_state = AppState.fresh()
             await persist_state()
         else:
+            # Credit last toggler for wall time elapsed since last persist
+            # (covers both clean shutdown and crash recovery).
+            last_toggler = row.get("last_toggler_user_id")
+            if last_toggler is not None:
+                extra_wall = max(0, now_wall_ms() - int(row["segment_started_wall_ms"]))
+                if extra_wall > 0:
+                    await db.credit_active_time(int(last_toggler), int(row["value"]), extra_wall)
             app_state = AppState.from_row(row)
 
     persist_task = asyncio.create_task(periodic_persist_loop())
@@ -239,23 +246,31 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
 
             async with state_lock:
                 state_elapsed = app_state.segment_elapsed_ms()
+                prev_toggler = app_state.last_toggler_user_id
+                prev_color = app_state.value
                 app_state.toggle()
+                app_state.last_toggler_user_id = user_id
                 await persist_state()
                 new_value = app_state.value
                 if user_id is not None:
                     await db.increment_user_toggle(user_id, new_value)
+                if prev_toggler is not None and state_elapsed > 0:
+                    await db.credit_active_time(prev_toggler, prev_color, state_elapsed)
                 snapshot = app_state.snapshot()
 
             await manager.broadcast(snapshot)
 
             if user_stats is not None:
-                user_stats["toggle_count"] += 1
-                if new_value == 0:
-                    user_stats["toggles_to_red"] += 1
-                else:
-                    user_stats["toggles_to_blue"] += 1
-                user_stats["last_toggle_at_wall"] = _now_iso()
+                user_stats = await db.get_user_stats(user_id)
                 await manager.send_snapshot(websocket, _stats_payload(user_stats))
+
+            if prev_toggler is not None and state_elapsed > 0 and prev_toggler != user_id:
+                prev_stats = await db.get_user_stats(prev_toggler)
+                if prev_stats:
+                    payload = _stats_payload(prev_stats)
+                    for ws, ident in manager._connections.items():
+                        if ident == f"user:{prev_toggler}":
+                            asyncio.create_task(manager.send_snapshot(ws, payload))
 
             if ip_tracker.record_toggle(client_ip, state_elapsed):
                 logger.warning("Banning IP %s due to reactive bot detection", client_ip)
@@ -305,6 +320,9 @@ def _stats_payload(stats: dict) -> dict:
         "toggles_to_blue": stats["toggles_to_blue"],
         "member_since": stats["created_at_wall"],
         "last_active": stats["last_toggle_at_wall"],
+        "active_time_ms": stats.get("active_time_ms", 0),
+        "active_time_red_ms": stats.get("active_time_red_ms", 0),
+        "active_time_blue_ms": stats.get("active_time_blue_ms", 0),
     }
 
 
