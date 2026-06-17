@@ -50,6 +50,20 @@ CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_users_toggle_count ON users(toggle_count DESC);
 """
 
+# Best-effort migrations for columns added after the initial schema.
+# Each statement is executed in a try/except so it is safe to re-run
+# against a database that already has the column.
+_MIGRATIONS = [
+    "ALTER TABLE users ADD COLUMN active_time_ms INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE users ADD COLUMN active_time_red_ms INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE users ADD COLUMN active_time_blue_ms INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE app_state ADD COLUMN last_toggler_user_id INTEGER",
+]
+
+_MIGRATION_INDEXES = [
+    "CREATE INDEX IF NOT EXISTS idx_users_active_time ON users(active_time_ms DESC)",
+]
+
 
 def _now_wall_iso() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
@@ -65,6 +79,13 @@ async def init_db() -> None:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     async with aiosqlite.connect(DB_PATH) as db:
         await db.executescript(SCHEMA)
+        for stmt in _MIGRATIONS:
+            try:
+                await db.execute(stmt)
+            except Exception:
+                pass  # column already exists
+        for stmt in _MIGRATION_INDEXES:
+            await db.execute(stmt)
         await db.commit()
 
 
@@ -89,6 +110,7 @@ async def save_state_row(
     longest_red_ms: int,
     longest_blue_ms: int,
     segment_started_wall_ms: int,
+    last_toggler_user_id: int | None,
 ) -> None:
     """
     Upsert committed state to SQLite.
@@ -100,6 +122,7 @@ async def save_state_row(
         longest_red_ms: Longest red stint ms
         longest_blue_ms: Longest blue stint ms
         segment_started_wall_ms: Wall ms when current segment began
+        last_toggler_user_id: User who initiated the current segment
 
     Returns:
         None
@@ -111,8 +134,9 @@ async def save_state_row(
             INSERT INTO app_state (
                 id, value, total_red_ms, total_blue_ms,
                 longest_red_ms, longest_blue_ms,
-                segment_started_wall_ms, updated_at_wall
-            ) VALUES (1, ?, ?, ?, ?, ?, ?, ?)
+                segment_started_wall_ms, updated_at_wall,
+                last_toggler_user_id
+            ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 value = excluded.value,
                 total_red_ms = excluded.total_red_ms,
@@ -120,7 +144,8 @@ async def save_state_row(
                 longest_red_ms = excluded.longest_red_ms,
                 longest_blue_ms = excluded.longest_blue_ms,
                 segment_started_wall_ms = excluded.segment_started_wall_ms,
-                updated_at_wall = excluded.updated_at_wall
+                updated_at_wall = excluded.updated_at_wall,
+                last_toggler_user_id = excluded.last_toggler_user_id
             """,
             (
                 value,
@@ -130,6 +155,7 @@ async def save_state_row(
                 longest_blue_ms,
                 segment_started_wall_ms,
                 updated_at,
+                last_toggler_user_id,
             ),
         )
         await db.commit()
@@ -170,6 +196,9 @@ _STAT_COLUMNS = (
     "toggles_to_red",
     "toggles_to_blue",
     "last_toggle_at_wall",
+    "active_time_ms",
+    "active_time_red_ms",
+    "active_time_blue_ms",
 )
 
 
@@ -266,10 +295,29 @@ async def increment_user_toggle(user_id: int, new_value: int) -> None:
 # Maps a leaderboard metric key to its (trusted) column name. Used to build
 # the ranking SQL; values are never derived from request input.
 LEADERBOARD_COLUMNS = {
+    "time": "active_time_ms",
     "total": "toggle_count",
     "red": "toggles_to_red",
     "blue": "toggles_to_blue",
 }
+
+
+async def credit_active_time(user_id: int, color_value: int, ms: int) -> None:
+    """
+    Add *ms* milliseconds of active time to a user's running total.
+
+    Args:
+        user_id: Target user
+        color_value: 0 for red, 1 for blue
+        ms: Milliseconds to credit
+    """
+    col = "active_time_red_ms" if color_value == 0 else "active_time_blue_ms"
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            f"UPDATE users SET {col} = {col} + ?, active_time_ms = active_time_ms + ? WHERE id = ?",
+            (ms, ms, user_id),
+        )
+        await db.commit()
 
 
 async def get_leaderboard(metric: str, limit: int) -> list[dict]:
@@ -285,11 +333,12 @@ async def get_leaderboard(metric: str, limit: int) -> list[dict]:
         zero for this metric are excluded.
     """
     column = LEADERBOARD_COLUMNS[metric]
+    extra_cols = ", active_time_red_ms, active_time_blue_ms" if metric == "time" else ""
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             f"""
-            SELECT username, {column} AS score FROM users
+            SELECT username, {column} AS score {extra_cols} FROM users
             WHERE {column} > 0
             ORDER BY {column} DESC, id ASC
             LIMIT ?
@@ -313,11 +362,12 @@ async def get_user_rank(metric: str, user_id: int) -> dict | None:
         rank), or None if the user does not exist.
     """
     column = LEADERBOARD_COLUMNS[metric]
+    extra_cols = ", a.active_time_red_ms, a.active_time_blue_ms" if metric == "time" else ""
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             f"""
-            SELECT username, {column} AS score,
+            SELECT a.username, a.{column} AS score {extra_cols},
                    (SELECT COUNT(*) FROM users b WHERE b.{column} > a.{column}) + 1 AS rank
             FROM users a WHERE a.id = ?
             """,
