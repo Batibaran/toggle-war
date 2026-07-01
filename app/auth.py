@@ -8,7 +8,7 @@ import secrets
 import bcrypt
 
 USERNAME_MIN = 3
-USERNAME_MAX = 20
+USERNAME_MAX = 12
 PASSWORD_MIN = 8
 PASSWORD_MAX = 72  # bcrypt truncates input beyond 72 bytes
 TOKEN_TTL_DAYS = 30
