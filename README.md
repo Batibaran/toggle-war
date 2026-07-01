@@ -2,7 +2,7 @@
 
 A minimalist, high-stakes multiplayer tug-of-war played via a single, shared button.
 
-The game is currently hosted and live at: [http://93.113.57.72/](http://93.113.57.72/) (yeah it looks sketchy for now. will get a domain soon™️)
+The game is currently hosted and live at: [www.togglewar.com](https://www.togglewar.com/)
 
 There are no complex mechanics or deep configuration settings for players. There is only the button, your chosen team, and the clock.
 
