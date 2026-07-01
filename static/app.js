@@ -49,6 +49,9 @@ const chatLog = document.getElementById("chat-log");
 const chatForm = document.getElementById("chat-form");
 const chatInput = document.getElementById("chat-input");
 const chatSend = document.getElementById("chat-send");
+const allegianceBtns = document.querySelectorAll(".allegiance__btn");
+
+let currentAllegiance = "";
 
 let chatCooldownTimer = null;
 
@@ -57,6 +60,9 @@ const LEADERBOARD_POLL_MS = 8000;
 let leaderboardData = null;
 let activeBoard = "time";
 let currentUsername = null;
+// #1 on the headline (active time) leaderboard; gets a crown next to their
+// name in chat. Updated on each leaderboard poll.
+let leaderUsername = null;
 
 function showCooldown() {
   switchBtn.disabled = true;
@@ -203,6 +209,20 @@ function renderActiveBoard() {
   if (leaderboardData) renderBoard(leaderboardData[activeBoard]);
 }
 
+// Color a chat name by allegiance: red / blue, or the signed-in user's own
+// name in green (which always wins over their chosen side).
+function colorChatName(el) {
+  const isMe = !!currentUsername && el.dataset.user === currentUsername;
+  const side = el.dataset.allegiance;
+  el.classList.toggle("chat__name--me", isMe);
+  el.classList.toggle("chat__name--red", !isMe && side === "red");
+  el.classList.toggle("chat__name--blue", !isMe && side === "blue");
+  el.classList.toggle(
+    "chat__name--leader",
+    !!leaderUsername && el.dataset.user === leaderUsername,
+  );
+}
+
 function renderChatMessage(msg) {
   const atBottom =
     chatLog.scrollHeight - chatLog.scrollTop - chatLog.clientHeight < 40;
@@ -211,9 +231,9 @@ function renderChatMessage(msg) {
   const name = document.createElement("span");
   name.className = "chat__name";
   name.dataset.user = msg.username;
-  if (currentUsername && msg.username === currentUsername) {
-    name.classList.add("chat__name--me");
-  }
+  name.dataset.allegiance =
+    msg.allegiance === "red" || msg.allegiance === "blue" ? msg.allegiance : "";
+  colorChatName(name);
   name.textContent = msg.username;
   const text = document.createElement("span");
   text.className = "chat__text";
@@ -234,12 +254,7 @@ function renderChatHistory(messages) {
 // Re-apply the "this is you" highlight to already-rendered messages, since the
 // session can resolve after some chat history has already been shown.
 function refreshChatHighlight() {
-  chatLog.querySelectorAll(".chat__name").forEach((el) => {
-    el.classList.toggle(
-      "chat__name--me",
-      !!currentUsername && el.dataset.user === currentUsername,
-    );
-  });
+  chatLog.querySelectorAll(".chat__name").forEach(colorChatName);
 }
 
 async function fetchLeaderboard() {
@@ -250,7 +265,10 @@ async function fetchLeaderboard() {
     if (res.ok) {
       const data = await res.json();
       leaderboardData = data.boards;
+      leaderUsername = leaderboardData?.time?.top?.[0]?.username || null;
       renderActiveBoard();
+      // Leader may have changed; re-apply crowns to already-shown messages.
+      refreshChatHighlight();
     }
   } catch {
     /* leave the last view in place */
@@ -261,6 +279,17 @@ function setChatEnabled(enabled) {
   chatInput.disabled = !enabled;
   chatSend.disabled = !enabled;
   chatInput.placeholder = enabled ? "Say something…" : "Log in to chat…";
+  allegianceBtns.forEach((btn) => {
+    btn.disabled = !enabled;
+  });
+}
+
+// Reflect the active allegiance (""/"red"/"blue") in the selector buttons.
+function setAllegianceUI(value) {
+  currentAllegiance = value === "red" || value === "blue" ? value : "";
+  allegianceBtns.forEach((btn) => {
+    btn.classList.toggle("is-active", btn.dataset.side === currentAllegiance);
+  });
 }
 
 // On a rate-limit, briefly lock the input and surface the reason as a red
@@ -298,6 +327,7 @@ function setLoggedOut() {
   playerStats.hidden = true;
   authPassword.value = "";
   setChatEnabled(false);
+  setAllegianceUI("");
   refreshChatHighlight();
 }
 
@@ -399,6 +429,7 @@ function connect() {
       if (msg.type === "chat") renderChatMessage(msg);
       if (msg.type === "chat_history") renderChatHistory(msg.messages);
       if (msg.type === "chat_error") showChatCooldown(msg.error || "Slow down");
+      if (msg.type === "allegiance") setAllegianceUI(msg.value);
     } catch {
       /* ignore malformed */
     }
@@ -434,6 +465,17 @@ chatForm.addEventListener("submit", (event) => {
     socket.send(JSON.stringify({ type: "chat", text }));
     chatInput.value = "";
   }
+});
+
+allegianceBtns.forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const side = btn.dataset.side; // "", "red", or "blue"
+    if (side === currentAllegiance) return;
+    setAllegianceUI(side);
+    if (socket?.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify({ type: "set_allegiance", value: side }));
+    }
+  });
 });
 
 authForm.addEventListener("submit", (event) => {
