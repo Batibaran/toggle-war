@@ -127,7 +127,18 @@
   </aside>
 
   <section id="chat" class="chat" aria-label="Global chat">
-    <h2 class="chat__heading">Global chat</h2>
+    <div class="chat__top">
+      <h2 class="chat__heading">Global chat</h2>
+      <div id="allegiance" class="allegiance" role="group" aria-label="Show your allegiance">
+        <span class="allegiance__label">Side</span>
+        <button type="button" class="allegiance__btn is-active" data-side="" title="No allegiance"
+          aria-label="No allegiance" disabled>⚫</button>
+        <button type="button" class="allegiance__btn allegiance__btn--red" data-side="red"
+          title="Back red" aria-label="Back red" disabled>🔴</button>
+        <button type="button" class="allegiance__btn allegiance__btn--blue" data-side="blue"
+          title="Back blue" aria-label="Back blue" disabled>🔵</button>
+      </div>
+    </div>
     <ol id="chat-log" class="chat__log" aria-live="polite"></ol>
     <form id="chat-form" class="chat__form">
       <input id="chat-input" type="text" maxlength="280" placeholder="Log in to chat…" disabled

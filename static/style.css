@@ -588,6 +588,13 @@ body {
   backdrop-filter: blur(4px);
 }
 
+.chat__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
 .chat__heading {
   margin: 0;
   font-size: 0.7rem;
@@ -595,6 +602,58 @@ body {
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: #888;
+}
+
+.allegiance {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.allegiance__label {
+  font-size: 0.6rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #666;
+  margin-right: 0.15rem;
+}
+
+.allegiance__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  font-size: 0.8rem;
+  line-height: 1;
+  cursor: pointer;
+  background: transparent;
+  color: #888;
+  border: 1px solid #333;
+  border-radius: 4px;
+}
+
+.allegiance__btn:hover:not(:disabled) {
+  border-color: #888;
+}
+
+.allegiance__btn.is-active {
+  border-color: #888;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.allegiance__btn--red.is-active {
+  border-color: #ef5350;
+}
+
+.allegiance__btn--blue.is-active {
+  border-color: #42a5f5;
+}
+
+.allegiance__btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .chat__log {
@@ -616,13 +675,28 @@ body {
 
 .chat__name {
   font-weight: 600;
-  color: #9ecbff;
+  /* Default (no allegiance) is purple; red/blue/me classes override it. */
+  color: #ab47bc;
   margin-right: 0.4rem;
 }
 
-/* The signed-in user's own name stands out in green. */
+/* Allegiance tints the name; the signed-in user's own name stays green,
+   which always overrides their chosen side. */
+.chat__name--red {
+  color: #ef5350;
+}
+
+.chat__name--blue {
+  color: #42a5f5;
+}
+
 .chat__name--me {
   color: #66bb6a;
+}
+
+/* Current #1 on the leaderboard wears a crown before their name. */
+.chat__name--leader::before {
+  content: "👑\00a0";
 }
 
 .chat__name::after {

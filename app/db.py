@@ -58,6 +58,8 @@ _MIGRATIONS = [
     "ALTER TABLE users ADD COLUMN active_time_red_ms INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE users ADD COLUMN active_time_blue_ms INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE app_state ADD COLUMN last_toggler_user_id INTEGER",
+    # Chat allegiance badge: 'red', 'blue', or NULL (none). Purely cosmetic.
+    "ALTER TABLE users ADD COLUMN allegiance TEXT",
 ]
 
 _MIGRATION_INDEXES = [
@@ -288,6 +290,22 @@ async def increment_user_toggle(user_id: int, new_value: int) -> None:
             WHERE id = ?
             """,
             (to_red, to_blue, now, user_id),
+        )
+        await db.commit()
+
+
+async def set_user_allegiance(user_id: int, allegiance: str | None) -> None:
+    """
+    Set a user's chat allegiance badge.
+
+    Args:
+        user_id: Target user
+        allegiance: 'red', 'blue', or None to clear it
+    """
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE users SET allegiance = ? WHERE id = ?",
+            (allegiance, user_id),
         )
         await db.commit()
 

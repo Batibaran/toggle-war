@@ -45,6 +45,8 @@ manager = ConnectionManager()
 # entry is {"username", "text", "ts"}.
 CHAT_HISTORY_SIZE = 200
 CHAT_MAX_LEN = 280
+# Cosmetic chat badge showing which side a player backs; anything else clears it.
+ALLEGIANCES = {"red", "blue"}
 chat_history: deque[dict] = deque(maxlen=CHAT_HISTORY_SIZE)
 ip_tracker = IPTracker(
     MAX_CONNS_PER_IP,
@@ -204,6 +206,11 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
             websocket, {"type": "chat_history", "messages": list(chat_history)}
         )
 
+        if user is not None:
+            await manager.send_snapshot(
+                websocket, {"type": "allegiance", "value": user.get("allegiance")}
+            )
+
         while True:
             raw = await websocket.receive_text()
             try:
@@ -212,6 +219,19 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 continue
 
             msg_type = message.get("type")
+
+            if msg_type == "set_allegiance":
+                if user_id is None:
+                    continue
+                # Any value outside the known set clears the badge.
+                value = message.get("value")
+                allegiance = value if value in ALLEGIANCES else None
+                user["allegiance"] = allegiance
+                await db.set_user_allegiance(user_id, allegiance)
+                await websocket.send_text(
+                    json.dumps({"type": "allegiance", "value": allegiance})
+                )
+                continue
 
             if msg_type == "chat":
                 if user_id is None:
@@ -231,6 +251,9 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                     "username": user["username"],
                     "text": text[:CHAT_MAX_LEN],
                     "ts": _now_iso(),
+                    # Snapshot the badge at send time so history stays accurate
+                    # even if the player later switches sides.
+                    "allegiance": user.get("allegiance"),
                 }
                 chat_history.append(entry)
                 await manager.broadcast_event({"type": "chat", **entry})
