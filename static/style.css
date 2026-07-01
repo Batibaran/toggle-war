@@ -217,6 +217,84 @@ body {
   cursor: not-allowed;
 }
 
+.how-to-play {
+  position: fixed;
+  left: 1.25rem;
+  bottom: 1.25rem;
+  z-index: 10;
+  width: 18rem;
+  max-width: calc(100vw - 2.5rem);
+  /* Cap the height so the box (which grows upward from the bottom) never
+     reaches the stats panel pinned in the top-left. */
+  max-height: calc(100vh - 27rem);
+  overflow-y: auto;
+  border: 1px solid #333;
+  border-radius: 6px;
+  background: #0a0a0a;
+}
+
+.how-to-play>summary {
+  padding: 0.7rem 1rem;
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: #bbb;
+  list-style: none;
+}
+
+.how-to-play>summary::-webkit-details-marker {
+  display: none;
+}
+
+.how-to-play>summary::before {
+  content: "▸";
+  display: inline-block;
+  margin-right: 0.5rem;
+  color: #666;
+}
+
+.how-to-play[open]>summary::before {
+  content: "▾";
+}
+
+.how-to-play>summary:hover {
+  color: #fff;
+}
+
+.how-to-play__body {
+  padding: 0 1.1rem 0.4rem;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: #bbb;
+  border-top: 1px solid #222;
+}
+
+.how-to-play__body p {
+  margin: 0.8rem 0;
+}
+
+.how-to-play__body ol {
+  margin: 0.8rem 0;
+  padding-left: 1.2rem;
+}
+
+.how-to-play__body li {
+  margin: 0.35rem 0;
+}
+
+.how-to-play__body strong {
+  color: #e0e0e0;
+}
+
+.how-to-play__red {
+  color: #ef5350;
+  font-weight: 600;
+}
+
+.how-to-play__blue {
+  color: #42a5f5;
+  font-weight: 600;
+}
+
 .status {
   margin: 0;
   font-size: 0.8rem;
@@ -327,6 +405,7 @@ body {
 /* Leaderboard in the top-right corner. */
 .side-panel--right {
   right: 1.25rem;
+  width: 19rem;
 }
 
 .side-panel__heading {
@@ -383,9 +462,11 @@ body {
   0% {
     box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.5);
   }
+
   70% {
     box-shadow: 0 0 0 0.35rem rgba(76, 175, 80, 0);
   }
+
   100% {
     box-shadow: 0 0 0 0 rgba(76, 175, 80, 0);
   }
@@ -631,6 +712,13 @@ body {
     transform: none;
     width: min(100%, 20rem);
     margin: 1rem auto 1.5rem;
+  }
+
+  .how-to-play {
+    position: static;
+    width: min(100%, 20rem);
+    max-height: none;
+    margin: 0 auto 1.5rem;
   }
 
   .auth-bar {

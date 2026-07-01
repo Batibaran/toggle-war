@@ -12,7 +12,7 @@
 <body>
   <div id="auth-bar" class="auth-bar">
     <form id="auth-form" class="auth-form">
-      <input id="auth-username" type="text" placeholder="Username" autocomplete="username" maxlength="20" />
+      <input id="auth-username" type="text" placeholder="Username" autocomplete="username" maxlength="12" />
       <input id="auth-password" type="password" placeholder="Password" autocomplete="current-password" />
       <div class="auth-form__actions">
         <button id="login-btn" type="submit">Log in</button>
@@ -135,6 +135,34 @@
       <button id="chat-send" type="submit" disabled>Send</button>
     </form>
   </section>
+
+  <details class="how-to-play">
+    <summary>New here? How to play</summary>
+    <div class="how-to-play__body">
+      <p>
+        <strong>Toggle War</strong> is one giant tug-of-war over a single shared
+        switch. Everyone online sees the same square, and right now it's either
+        <span class="how-to-play__red">Red</span> or
+        <span class="how-to-play__blue">Blue</span>.
+      </p>
+      <p><strong>The loop:</strong></p>
+      <ol>
+        <li>Log in with a username and password up top.</li>
+        <li>Hit <strong>Switch</strong> to flip the square to the other colour.</li>
+        <li>
+          Every second the square holds a colour, that colour banks time. The
+          <em>Current</em> clock shows the ongoing streak; <em>Longest</em> is the
+          record streak for each side.
+        </li>
+        <li>There's a short cooldown after each switch, so you can't spam it.</li>
+      </ol>
+      <p>
+        That's the whole war: keep flipping the square toward your side and pile up
+        time and switches. Climb the leaderboards for total active time, total
+        switches, or most switches to Red or Blue — and trash-talk in global chat.
+      </p>
+    </div>
+  </details>
 
   <script src="/app.js"></script>
 </body>
